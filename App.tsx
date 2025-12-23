@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CredentialsForm from './components/CredentialsForm';
 import ArchitectureViewer from './components/ArchitectureViewer';
 import { AppStep, ConfigFormData, ArchitectureData } from './types';
@@ -10,6 +10,11 @@ const App = () => {
   const [archData, setArchData] = useState<ArchitectureData | null>(null);
   const [currentConfig, setCurrentConfig] = useState<ConfigFormData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const handleConfigSubmit = async (data: ConfigFormData) => {
     setStep(AppStep.LOADING);
@@ -66,7 +71,7 @@ const App = () => {
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Error al actualizar la arquitectura.");
-      setStep(AppStep.VISUALIZE); // Volver al visor para mostrar el error ahí o permitir reintentar
+      setStep(AppStep.VISUALIZE); 
     }
   };
 
@@ -84,15 +89,29 @@ const App = () => {
         onReset={handleReset} 
         onUpdateTags={handleUpdateTags}
         error={error}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0B] flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-[#4F46E5]/30">
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-[#4F46E5]/30 transition-colors duration-500 ${theme === 'dark' ? 'bg-[#0A0A0B]' : 'bg-gray-100'}`}>
+      
+      {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
          <div className="absolute -top-[10%] -left-[5%] w-[60%] h-[60%] bg-[#4F46E5]/10 rounded-full blur-[120px] animate-pulse"></div>
          <div className="absolute bottom-[0%] -right-[5%] w-[40%] h-[40%] bg-[#8B5CF6]/10 rounded-full blur-[100px]"></div>
+      </div>
+      
+      {/* Theme Toggle in Config Screen */}
+      <div className="absolute top-6 right-6 z-20">
+         <button 
+           onClick={toggleTheme}
+           className={`p-2 rounded-xl border transition-all ${theme === 'dark' ? 'bg-white/10 border-white/10 text-white hover:bg-white/20' : 'bg-white border-gray-200 text-slate-600 hover:bg-gray-50 shadow-sm'}`}
+         >
+            {theme === 'dark' ? '☀️' : '🌙'}
+         </button>
       </div>
 
       <div className="z-10 w-full max-w-4xl flex flex-col items-center animate-in fade-in zoom-in-95 duration-700">
@@ -101,10 +120,10 @@ const App = () => {
                 <Monitor className="w-10 h-10 text-white" />
             </div>
             <div>
-              <h1 className="text-5xl font-black text-white tracking-tight mb-2">
+              <h1 className={`text-5xl font-black tracking-tight mb-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                 CloudArchitect <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#06B6D4] to-[#8B5CF6]">Live</span>
               </h1>
-              <p className="text-slate-400 text-sm font-bold tracking-[0.2em] uppercase">Visualización AWS en Tiempo Real</p>
+              <p className={`text-sm font-bold tracking-[0.2em] uppercase ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Visualización AWS en Tiempo Real</p>
             </div>
         </div>
 
@@ -119,13 +138,13 @@ const App = () => {
         )}
         
         {step === AppStep.LOADING ? (
-          <div className="flex flex-col items-center justify-center p-12 bg-[#0A0A0B]/80 backdrop-blur-xl rounded-2xl border border-white/10 w-full max-w-lg shadow-2xl animate-pulse">
+          <div className={`flex flex-col items-center justify-center p-12 backdrop-blur-xl rounded-2xl border w-full max-w-lg shadow-2xl animate-pulse ${theme === 'dark' ? 'bg-[#0A0A0B]/80 border-white/10' : 'bg-white/80 border-gray-200'}`}>
             <div className="w-16 h-16 border-4 border-[#4F46E5] border-t-transparent rounded-full animate-spin mb-6"></div>
-            <h2 className="text-xl font-bold text-white mb-2">Escaneando Arquitectura</h2>
-            <p className="text-slate-400 text-sm">Consultando Resource Groups y Tagging API de AWS...</p>
+            <h2 className={`text-xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Escaneando Arquitectura</h2>
+            <p className={`${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} text-sm`}>Consultando Resource Groups y Tagging API de AWS...</p>
           </div>
         ) : (
-          <CredentialsForm onSubmit={handleConfigSubmit} isLoading={false} />
+          <CredentialsForm onSubmit={handleConfigSubmit} isLoading={false} theme={theme} />
         )}
       </div>
 

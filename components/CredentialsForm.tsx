@@ -5,9 +5,10 @@ import { Lock, Search, Key, ShieldCheck, Tag, Globe } from 'lucide-react';
 interface Props {
   onSubmit: (data: ConfigFormData) => void;
   isLoading: boolean;
+  theme: 'dark' | 'light';
 }
 
-const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
+const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading, theme }) => {
   const [form, setForm] = useState<ConfigFormData>({
     accessKey: '',
     secretKey: '',
@@ -25,12 +26,27 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
     onSubmit(form);
   };
 
+  const isDark = theme === 'dark';
+  
+  const containerClass = isDark 
+    ? "bg-[#0A0A0B]/80 border-white/10" 
+    : "bg-white/90 border-gray-200";
+
+  const textTitle = isDark ? "text-white" : "text-slate-900";
+  const textSub = isDark ? "text-slate-400" : "text-slate-500";
+  
+  const inputBg = isDark 
+    ? "bg-black/40 border-white/10 text-white focus:ring-[#4F46E5]" 
+    : "bg-gray-50 border-gray-200 text-slate-900 focus:ring-[#4F46E5] focus:bg-white";
+
+  const labelClass = "text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wider";
+
   return (
-    <div className="w-full max-w-lg mx-auto bg-[#0A0A0B]/80 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-white/10">
+    <div className={`w-full max-w-lg mx-auto backdrop-blur-xl p-8 rounded-2xl shadow-2xl border ${containerClass}`}>
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Conectar AWS</h2>
-        <p className="text-slate-400 text-sm">Ingresa tus credenciales para escanear recursos.</p>
-        <div className="mt-4 text-[11px] text-[#06B6D4] bg-[#06B6D4]/10 p-3 rounded-lg border border-[#06B6D4]/20 flex items-start text-left">
+        <h2 className={`text-3xl font-bold mb-2 ${textTitle}`}>Conectar AWS</h2>
+        <p className={`text-sm ${textSub}`}>Ingresa tus credenciales para escanear recursos.</p>
+        <div className={`mt-4 text-[11px] bg-[#06B6D4]/10 p-3 rounded-lg border flex items-start text-left ${isDark ? 'text-[#06B6D4] border-[#06B6D4]/20' : 'text-[#0e7490] border-[#06B6D4]/30'}`}>
           <ShieldCheck className="w-4 h-4 inline mr-2 shrink-0 mt-0.5" />
           <span><strong>Privacidad:</strong> Las peticiones se firman localmente. Tus llaves nunca salen de tu navegador.</span>
         </div>
@@ -39,7 +55,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wider">Credenciales IAM</label>
+            <label className={labelClass}>Credenciales IAM</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Key className="h-4 w-4 text-slate-500" />
@@ -50,7 +66,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
                 placeholder="Access Key ID"
                 value={form.accessKey}
                 onChange={handleChange}
-                className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent block w-full pl-10 p-3 outline-none transition-all"
+                className={`text-sm rounded-xl focus:ring-2 focus:border-transparent block w-full pl-10 p-3 outline-none transition-all ${inputBg}`}
                 required
               />
             </div>
@@ -66,14 +82,14 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
               placeholder="Secret Access Key"
               value={form.secretKey}
               onChange={handleChange}
-              className="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent block w-full pl-10 p-3 outline-none transition-all"
+              className={`text-sm rounded-xl focus:ring-2 focus:border-transparent block w-full pl-10 p-3 outline-none transition-all ${inputBg}`}
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wider">Región</label>
+                <label className={labelClass}>Región</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Globe className="h-4 w-4 text-slate-500" />
@@ -82,7 +98,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
                     name="region"
                     value={form.region}
                     onChange={handleChange}
-                    className="bg-black/40 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-[#4F46E5] focus:border-transparent block w-full pl-10 p-3 appearance-none outline-none"
+                    className={`text-sm rounded-xl focus:ring-2 focus:border-transparent block w-full pl-10 p-3 appearance-none outline-none ${inputBg}`}
                   >
                     <option value="us-east-1">us-east-1 (N. Virginia)</option>
                     <option value="us-west-2">us-west-2 (Oregon)</option>
@@ -93,7 +109,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
              </div>
           </div>
 
-          <div className="pt-4 border-t border-white/5">
+          <div className={`pt-4 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
              <label className="block mb-2 text-xs font-bold text-[#06B6D4] uppercase tracking-widest">Etiqueta de Filtro (Tag)</label>
              <div className="grid grid-cols-2 gap-4">
                 <div className="relative">
@@ -106,7 +122,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
                       placeholder="Key (ej. App)"
                       value={form.tagKey}
                       onChange={handleChange}
-                      className="bg-black/40 border border-white/10 text-white text-sm rounded-xl block w-full pl-10 p-3 focus:ring-2 focus:ring-[#4F46E5] outline-none"
+                      className={`text-sm rounded-xl block w-full pl-10 p-3 focus:ring-2 focus:border-transparent outline-none ${inputBg}`}
                     />
                 </div>
                 <div className="relative">
@@ -116,7 +132,7 @@ const CredentialsForm: React.FC<Props> = ({ onSubmit, isLoading }) => {
                       placeholder="Value (ej. Web)"
                       value={form.tagValue}
                       onChange={handleChange}
-                      className="bg-black/40 border border-white/10 text-white text-sm rounded-xl block w-full p-3 focus:ring-2 focus:ring-[#4F46E5] outline-none"
+                      className={`text-sm rounded-xl block w-full p-3 focus:ring-2 focus:border-transparent outline-none ${inputBg}`}
                     />
                 </div>
              </div>

@@ -15,6 +15,11 @@ const simplifyIdentifier = (str: string): string => {
   
   // Limpiar sufijos de versiones o invocaciones
   clean = clean.replace(/\/invocations$/, '').replace(/\$[^/]+$/, '');
+  
+  // Remover extensiones de dominio comunes para matching (ej: s3 bucket domain)
+  clean = clean.replace('.s3.amazonaws.com', '');
+  clean = clean.replace('.elb.amazonaws.com', '');
+  
   return clean.toLowerCase().trim();
 };
 
@@ -54,7 +59,6 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
   // 1. CONEXIONES ELB -> TARGET GROUPS -> INSTANCES
   const elbs = nodes.filter(n => n.type === 'ELB' || n.type === 'ALB' || n.type === 'NLB' || n.type === 'ELASTICLOADBALANCING');
   elbs.forEach(elb => {
-      // Intentar conectar ELB -> TG
       let tgNodesFound: string[] = [];
       
       if (elb.details?.elbTargetGroups) {
@@ -75,22 +79,17 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
           } catch (e) {}
       }
 
-      // Conectar Targets finales (Instances/Lambdas)
       if (elb.details?.elbTargets) {
           try {
               const targetIds: string[] = JSON.parse(elb.details.elbTargets);
               targetIds.forEach(targetId => {
                   const targetNode = nodesWithSimpleIds.find(n => n.id === targetId || n.simpleId === simplifyIdentifier(targetId));
                   if (targetNode) {
-                      // Si encontramos nodos de TG asociados a este ELB, intentamos conectar TG -> Instance
-                      // Pero como no sabemos cual target va a cual TG exactamente con la info actual (limitacion API simplificada),
-                      // conectamos TODOS los TGs encontrados a TODOS los targets encontrados para mantener el flujo visual ALB -> TG -> EC2
                       if (tgNodesFound.length > 0) {
                           tgNodesFound.forEach(tgId => {
                               addEdge(tgId, targetNode.id, 'Target');
                           });
                       } else {
-                          // Fallback: Si no hay nodos TG visibles, conectar directo ELB -> Instance
                           addEdge(elb.id, targetNode.id, 'Target');
                       }
                   }
@@ -107,10 +106,14 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
               const resourceArns: string[] = JSON.parse(sm.details.stateMachineResources);
               resourceArns.forEach(resArn => {
                   const resSimple = simplifyIdentifier(resArn);
+                  
+                  // Matching más agresivo: buscar por nombre de función exacto o ARN parcial
                   const targetNode = nodesWithSimpleIds.find(n => 
-                    (n.rawArn && n.rawArn === resArn) ||
-                    n.simpleId === resSimple ||
-                    resArn.includes(n.id)
+                    (n.rawArn && n.rawArn === resArn) || // ARN Exacto
+                    n.simpleId === resSimple || // ID/Nombre simplificado (lowercase)
+                    n.simpleLabel === resSimple || // Label simplificado
+                    resArn.includes(n.id) || // ID contenido en el ARN del recurso
+                    (n.details?.arn && resArn.includes(n.details.arn)) // ARN del nodo contenido en el recurso
                   );
                   
                   if (targetNode) {
@@ -123,7 +126,40 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
       }
   });
 
-  // 3. CONEXIONES EXPLÍCITAS (Linked Resources - API Gateway, etc)
+  // 3. CONEXIONES CLOUDFRONT (ORIGINS)
+  const distributions = nodes.filter(n => n.type === 'CLOUDFRONT');
+  distributions.forEach(dist => {
+      if (dist.details?.cloudfrontOrigins) {
+          try {
+              const origins: string[] = JSON.parse(dist.details.cloudfrontOrigins);
+              origins.forEach(originDomain => {
+                  const originSimple = simplifyIdentifier(originDomain);
+                  
+                  // Buscar el nodo destino basado en el dominio
+                  const targetNode = nodesWithSimpleIds.find(n => {
+                      // Caso S3: origin "my-bucket.s3..." vs bucket name "my-bucket"
+                      if (n.type === 'S3' && (originDomain.startsWith(n.label) || originDomain.startsWith(n.id))) return true;
+                      
+                      // Caso ELB: origin "my-alb-123..." vs alb name "my-alb"
+                      // A veces el ELB name es parte del DNS
+                      if ((n.type === 'ELB' || n.type === 'ALB') && originDomain.includes(n.simpleLabel)) return true;
+                      
+                      // Caso API Gateway
+                      if (n.type.includes('API') && originDomain.includes(n.id)) return true;
+
+                      // Fallback genérico
+                      return n.simpleId === originSimple;
+                  });
+
+                  if (targetNode) {
+                      addEdge(dist.id, targetNode.id, 'Origin');
+                  }
+              });
+          } catch (e) {}
+      }
+  });
+
+  // 4. CONEXIONES EXPLÍCITAS (Linked Resources)
   nodes.forEach(node => {
     if (node.details?.linkedResources) {
       try {
@@ -131,25 +167,47 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
         links.forEach(link => {
           const simpleLink = simplifyIdentifier(link);
           
+          // --- LOGICA ESPECIFICA PARA API GATEWAY -> LAMBDA ---
+          // Intentamos encontrar la Lambda incluso si el nombre no es exacto
+          if (link.includes(':function:')) {
+             const parts = link.split(':function:');
+             if (parts.length > 1) {
+                 const funcName = parts[1].split(':')[0]; // "NombreFuncion"
+                 const simpleFuncName = simplifyIdentifier(funcName);
+
+                 const lambdaMatch = nodesWithSimpleIds.find(n => 
+                    n.id === funcName || 
+                    n.simpleId === simpleFuncName ||
+                    n.simpleLabel === simpleFuncName
+                 );
+                 if (lambdaMatch) {
+                     addEdge(node.id, lambdaMatch.id, 'Integración');
+                     return; 
+                 }
+             }
+          }
+          
           const target = nodesWithSimpleIds.find(n => 
+            // 1. Coincidencia Exacta de ARN
+            (n.rawArn && link === n.rawArn) ||
+            // 2. El link (ARN) contiene el ID del nodo
             link.includes(n.id) || 
+            // 3. El link contiene el ARN del nodo
             (n.rawArn && link.includes(n.rawArn)) ||
+            // 4. El ARN del nodo contiene el link
             (n.rawArn && n.rawArn.includes(link)) ||
+            // 5. Comparación simplificada (lowercase, trim)
             n.simpleId === simpleLink ||
             n.simpleLabel === simpleLink
           );
-
-          if (target) {
-            addEdge(node.id, target.id, 'Integración');
-          }
+          
+          if (target) addEdge(node.id, target.id, 'Integración');
         });
-      } catch (e) {
-        console.error("Error topology linkedResources", e);
-      }
+      } catch (e) {}
     }
   });
 
-  // 4. CONEXIONES POR VARIABLES DE ENTORNO (Lambdas)
+  // 5. CONEXIONES POR VARIABLES DE ENTORNO (Lambdas)
   const lambdas = nodes.filter(n => n.type === ServiceTypes.LAMBDA);
   lambdas.forEach(lambda => {
     if (lambda.details?.envVars) {
@@ -158,9 +216,7 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
         Object.values(envs).forEach((val: any) => {
           const valStr = String(val);
           if (valStr.length < 5) return;
-
           const simpleVal = simplifyIdentifier(valStr);
-
           const targets = nodesWithSimpleIds.filter(n => 
             n.id !== lambda.id && (
               valStr.includes(n.id) || 
@@ -169,30 +225,10 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
               n.simpleId === simpleVal
             )
           );
-
           targets.forEach(t => addEdge(lambda.id, t.id, 'Ref. Env'));
         });
       } catch (e) {}
     }
-  });
-
-  // 5. CONEXIONES POR PREFIJO (Heurística Fallback)
-  nodes.forEach(nodeA => {
-    const partsA = nodeA.label.split(/[-_]/);
-    if (partsA.length < 2) return;
-    const prefixA = partsA.slice(0, 2).join('-'); 
-
-    nodes.forEach(nodeB => {
-      if (nodeA.id === nodeB.id) return;
-      
-      if (nodeB.label.startsWith(prefixA)) {
-        const typeA = nodeA.type;
-        const typeB = nodeB.type;
-
-        if ((typeA.includes('API')) && typeB === ServiceTypes.LAMBDA) addEdge(nodeA.id, nodeB.id);
-        if (typeA === ServiceTypes.LAMBDA && (typeB === ServiceTypes.RDS || typeB === ServiceTypes.DYNAMODB || typeB === ServiceTypes.S3)) addEdge(nodeA.id, nodeB.id);
-      }
-    });
   });
 
   return edges;
