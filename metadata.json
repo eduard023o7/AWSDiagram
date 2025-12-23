@@ -1,0 +1,5 @@
+{
+  "name": "CloudArchitect AI",
+  "description": "A Lucid Scale-like application that visualizes cloud architecture based on tags using Gemini to simulate infrastructure discovery and exports to diagram formats.",
+  "requestFramePermissions": []
+}
