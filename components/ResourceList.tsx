@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { CloudNode, ServiceType } from '../types';
+import { CloudNode } from '../types';
 import { 
   Cpu, 
   Database, 
@@ -9,7 +9,15 @@ import {
   Layers, 
   Box, 
   Server,
-  X
+  X,
+  MessageSquare,
+  Radio,
+  Workflow,
+  Shield,
+  Lock,
+  Zap,
+  Activity,
+  Network
 } from 'lucide-react';
 
 interface Props {
@@ -20,17 +28,31 @@ interface Props {
   tagValue: string;
 }
 
-const getIcon = (type: ServiceType) => {
-  switch (type) {
-    case ServiceType.EC2: return <Cpu className="w-4 h-4 text-orange-500" />;
-    case ServiceType.RDS: return <Database className="w-4 h-4 text-blue-500" />;
-    case ServiceType.S3: return <HardDrive className="w-4 h-4 text-green-500" />;
-    case ServiceType.VPC: return <Cloud className="w-4 h-4 text-purple-500" />;
-    case ServiceType.LOAD_BALANCER: return <Layers className="w-4 h-4 text-purple-400" />;
-    case ServiceType.API_GATEWAY: return <Globe className="w-4 h-4 text-indigo-400" />;
-    case ServiceType.LAMBDA: return <Box className="w-4 h-4 text-yellow-500" />;
-    default: return <Server className="w-4 h-4 text-gray-400" />;
-  }
+const getIcon = (type: string) => {
+  const t = type.toUpperCase();
+
+  if (t === 'EC2') return <Cpu className="w-4 h-4 text-orange-500" />;
+  if (t === 'RDS') return <Database className="w-4 h-4 text-blue-500" />;
+  if (t === 'S3') return <HardDrive className="w-4 h-4 text-green-500" />;
+  if (t === 'VPC') return <Cloud className="w-4 h-4 text-purple-500" />;
+  if (t === 'ELB' || t === 'ELASTICLOADBALANCING') return <Layers className="w-4 h-4 text-purple-400" />;
+  if (t === 'APIGATEWAY' || t.includes('API')) return <Globe className="w-4 h-4 text-indigo-400" />;
+  if (t === 'LAMBDA') return <Box className="w-4 h-4 text-yellow-500" />;
+  if (t === 'DYNAMODB') return <Database className="w-4 h-4 text-blue-400" />;
+  
+  if (t === 'SQS') return <MessageSquare className="w-4 h-4 text-pink-500" />;
+  if (t === 'SNS') return <Radio className="w-4 h-4 text-pink-400" />;
+  if (t === 'KINESIS' || t === 'FIREHOSE') return <Activity className="w-4 h-4 text-cyan-400" />;
+  if (t === 'EVENTS' || t === 'EVENTBRIDGE') return <Zap className="w-4 h-4 text-pink-300" />;
+
+  if (t === 'COGNITO-IDP' || t === 'COGNITO-IDENTITY') return <Lock className="w-4 h-4 text-red-400" />;
+  if (t === 'WAF' || t === 'WAFV2' || t === 'SHIELD') return <Shield className="w-4 h-4 text-red-500" />;
+  if (t === 'IAM') return <Lock className="w-4 h-4 text-gray-300" />;
+
+  if (t === 'STATES' || t === 'STEPFUNCTIONS') return <Workflow className="w-4 h-4 text-rose-500" />;
+  if (t === 'CLOUDFRONT') return <Network className="w-4 h-4 text-blue-300" />;
+
+  return <Server className="w-4 h-4 text-gray-400" />;
 };
 
 const ResourceList: React.FC<Props> = ({ nodes, isOpen, onClose, tagKey, tagValue }) => {
@@ -80,7 +102,6 @@ const ResourceList: React.FC<Props> = ({ nodes, isOpen, onClose, tagKey, tagValu
                       <p className="text-[10px] text-slate-500 font-mono truncate mb-1">
                         ID: {node.id}
                       </p>
-                      {/* Explicitly show the tag if present in details */}
                       {node.details && node.details[tagKey] && (
                           <div className="flex items-center mt-1">
                               <span className="text-[10px] bg-blue-900/30 text-blue-300 px-1.5 py-0.5 rounded border border-blue-900/50 truncate max-w-full">

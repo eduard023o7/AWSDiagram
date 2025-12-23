@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { ArchitectureData, ServiceType } from '../types';
+import { ArchitectureData, ServiceTypes } from '../types';
 
 /**
  * Since we cannot make direct AWS SDK calls from the browser due to CORS and security,
@@ -90,9 +90,9 @@ export const discoverArchitecture = async (
       // Sanitize types to ensure they match our Enum
       const sanitizedNodes = rawData.nodes.map((n: any) => ({
         ...n,
-        type: Object.values(ServiceType).includes(n.type as ServiceType) 
+        type: Object.values(ServiceTypes).includes(n.type) 
           ? n.type 
-          : ServiceType.UNKNOWN
+          : 'UNKNOWN'
       }));
       return { nodes: sanitizedNodes, edges: rawData.edges };
     }
