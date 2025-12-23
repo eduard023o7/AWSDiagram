@@ -6,7 +6,6 @@ import { getAwsIconUrl } from './awsIcons';
 const generateXmlContent = (nodes: any[], edges: any[]) => {
   const timestamp = new Date().toISOString();
   
-  // Note: compressed="false" is important for plain XML imports in some tools
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="CloudArchitect" modified="${timestamp}" agent="CloudArchitect" etag="1" version="21.0.0" type="device">
   <diagram name="AWS Architecture" id="cloud-arch-diagram">
@@ -15,7 +14,6 @@ const generateXmlContent = (nodes: any[], edges: any[]) => {
         <mxCell id="0" />
         <mxCell id="1" parent="0" />`;
 
-  // 1. Generate Nodes
   nodes.forEach((node) => {
     const x = Math.round(node.position.x || 0);
     const y = Math.round(node.position.y || 0);
@@ -24,10 +22,7 @@ const generateXmlContent = (nodes: any[], edges: any[]) => {
     
     const iconUrl = getAwsIconUrl(node.data.serviceType);
     const label = node.data.label || node.id;
-
-    // LucidChart imports images best when style explicitly sets shape=image
     const style = `shape=image;html=1;verticalAlign=top;verticalLabelPosition=bottom;labelBackgroundColor=none;imageAspect=0;aspect=fixed;image=${iconUrl};fontColor=#333333;fontStyle=1;fontSize=11;whiteSpace=wrap;`;
-
     const safeLabel = label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     xml += `
@@ -36,10 +31,8 @@ const generateXmlContent = (nodes: any[], edges: any[]) => {
         </mxCell>`;
   });
 
-  // 2. Generate Edges
   edges.forEach((edge) => {
-    const style = "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1;curved=1;";
-    
+    const style = "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4F46E5;strokeWidth=1.5;curved=1;";
     xml += `
         <mxCell id="${edge.id}" value="${edge.label || ''}" style="${style}" edge="1" parent="1" source="${edge.source}" target="${edge.target}">
           <mxGeometry relative="1" as="geometry" />
@@ -56,20 +49,33 @@ const generateXmlContent = (nodes: any[], edges: any[]) => {
 };
 
 /**
- * Downloads as .drawio (Standard for Draw.io)
+ * Generates CSV content from nodes.
  */
+export const downloadResourceCsv = (nodes: any[]) => {
+    const header = "Nombre,ID,Tipo,ARN,Etiquetas\n";
+    const rows = nodes.map(node => {
+        const d = node.data;
+        const details = d.details || {};
+        const tags = Object.entries(details)
+            .filter(([k]) => k !== 'arn' && k !== 'linkedResources' && k !== 'envVars')
+            .map(([k, v]) => `${k}=${v}`)
+            .join(' | ');
+            
+        return `"${d.label}","${node.id}","${d.serviceType}","${details.arn || ''}","${tags}"`;
+    }).join('\n');
+    
+    const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+    triggerDownload(blob, "aws_resource_inventory.csv");
+};
+
 export const downloadDrawIo = (nodes: any[], edges: any[]) => {
   const xml = generateXmlContent(nodes, edges);
   const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
   triggerDownload(blob, "aws_architecture.drawio");
 };
 
-/**
- * Downloads as .xml (Better for LucidChart "Import Documents")
- */
 export const downloadLucidXml = (nodes: any[], edges: any[]) => {
   const xml = generateXmlContent(nodes, edges);
-  // Using text/xml helps some browsers/importers treat it as plain XML structure
   const blob = new Blob([xml], { type: 'text/xml;charset=utf-8;' });
   triggerDownload(blob, "aws_architecture_lucid.xml");
 };

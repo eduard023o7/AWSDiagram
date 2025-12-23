@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { CloudNode } from '../types';
 import { 
@@ -17,7 +18,8 @@ import {
   Lock,
   Zap,
   Activity,
-  Network
+  Network,
+  Package
 } from 'lucide-react';
 
 interface Props {
@@ -33,26 +35,26 @@ const getIcon = (type: string) => {
 
   if (t === 'EC2') return <Cpu className="w-4 h-4 text-orange-500" />;
   if (t === 'RDS') return <Database className="w-4 h-4 text-blue-500" />;
-  if (t === 'S3') return <HardDrive className="w-4 h-4 text-green-500" />;
-  if (t === 'VPC') return <Cloud className="w-4 h-4 text-purple-500" />;
+  if (t === 'S3') return <HardDrive className="w-4 h-4 text-emerald-500" />;
+  if (t === 'VPC') return <Cloud className="w-4 h-4 text-indigo-500" />;
   if (t === 'ELB' || t === 'ELASTICLOADBALANCING') return <Layers className="w-4 h-4 text-purple-400" />;
-  if (t === 'APIGATEWAY' || t.includes('API')) return <Globe className="w-4 h-4 text-indigo-400" />;
-  if (t === 'LAMBDA') return <Box className="w-4 h-4 text-yellow-500" />;
-  if (t === 'DYNAMODB') return <Database className="w-4 h-4 text-blue-400" />;
+  if (t === 'APIGATEWAY' || t.includes('API')) return <Globe className="w-4 h-4 text-sky-400" />;
+  if (t === 'LAMBDA') return <Box className="w-4 h-4 text-amber-500" />;
+  if (t === 'DYNAMODB') return <Database className="w-4 h-4 text-sky-500" />;
   
   if (t === 'SQS') return <MessageSquare className="w-4 h-4 text-pink-500" />;
   if (t === 'SNS') return <Radio className="w-4 h-4 text-pink-400" />;
   if (t === 'KINESIS' || t === 'FIREHOSE') return <Activity className="w-4 h-4 text-cyan-400" />;
-  if (t === 'EVENTS' || t === 'EVENTBRIDGE') return <Zap className="w-4 h-4 text-pink-300" />;
+  if (t === 'EVENTS' || t === 'EVENTBRIDGE') return <Zap className="w-4 h-4 text-amber-300" />;
 
-  if (t === 'COGNITO-IDP' || t === 'COGNITO-IDENTITY') return <Lock className="w-4 h-4 text-red-400" />;
-  if (t === 'WAF' || t === 'WAFV2' || t === 'SHIELD') return <Shield className="w-4 h-4 text-red-500" />;
-  if (t === 'IAM') return <Lock className="w-4 h-4 text-gray-300" />;
+  if (t === 'COGNITO-IDP' || t === 'COGNITO-IDENTITY') return <Lock className="w-4 h-4 text-rose-400" />;
+  if (t === 'WAF' || t === 'WAFV2' || t === 'SHIELD') return <Shield className="w-4 h-4 text-rose-500" />;
+  if (t === 'IAM') return <Lock className="w-4 h-4 text-slate-400" />;
 
   if (t === 'STATES' || t === 'STEPFUNCTIONS') return <Workflow className="w-4 h-4 text-rose-500" />;
-  if (t === 'CLOUDFRONT') return <Network className="w-4 h-4 text-blue-300" />;
+  if (t === 'CLOUDFRONT') return <Network className="w-4 h-4 text-sky-300" />;
 
-  return <Server className="w-4 h-4 text-gray-400" />;
+  return <Server className="w-4 h-4 text-slate-400" />;
 };
 
 const ResourceList: React.FC<Props> = ({ nodes, isOpen, onClose, tagKey, tagValue }) => {
@@ -70,58 +72,66 @@ const ResourceList: React.FC<Props> = ({ nodes, isOpen, onClose, tagKey, tagValu
   if (!isOpen) return null;
 
   return (
-    <div className="absolute top-0 left-0 h-full w-80 bg-slate-800 border-r border-slate-700 shadow-2xl z-20 flex flex-col transform transition-transform duration-300 ease-in-out">
-      <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-900">
-        <h2 className="text-lg font-bold text-slate-100">Resource Inventory</h2>
-        <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
-          <X className="w-5 h-5" />
+    <div className="h-full flex flex-col bg-slate-900/40">
+      <div className="p-5 border-b border-slate-700/50 flex justify-between items-center bg-slate-800/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center space-x-2">
+            <Package className="w-5 h-5 text-blue-400" />
+            <h2 className="text-sm font-black text-white uppercase tracking-widest">Inventario</h2>
+        </div>
+        <button onClick={onClose} className="p-1.5 hover:bg-slate-700/50 rounded-lg text-slate-400 hover:text-white transition-all">
+          <X className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {Object.entries(groupedNodes).map(([type, typeNodes]) => (
-          <div key={type}>
-            <div className="flex items-center mb-3">
-              <span className="bg-slate-700 text-slate-300 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
-                {type}
-              </span>
-              <span className="ml-2 text-xs text-slate-500">{typeNodes.length} resources</span>
+      <div className="flex-1 overflow-y-auto p-4 space-y-8 custom-scrollbar">
+        {Object.entries(groupedNodes).map(([type, typeNodes]) => {
+          // Explicitly cast typeNodes to CloudNode[] as Object.entries often returns any/unknown
+          const nodesOfType = typeNodes as CloudNode[];
+          return (
+            <div key={type} className="animate-in fade-in slide-in-from-left-2 duration-300">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="bg-slate-800 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded-md border border-slate-700/50 uppercase tracking-widest">
+                  {type}
+                </span>
+                <span className="text-[10px] text-slate-500 font-bold">{nodesOfType.length} recursos</span>
+              </div>
+              
+              <ul className="space-y-2">
+                {nodesOfType.map(node => (
+                  <li key={node.id} className="bg-slate-800/40 rounded-xl border border-slate-700/30 p-3 hover:border-blue-500/30 hover:bg-slate-800/60 transition-all group cursor-default">
+                    <div className="flex items-start">
+                      <div className="mt-0.5 mr-3 p-2 bg-slate-900/80 rounded-lg border border-slate-700/50 group-hover:border-blue-500/20 transition-all">
+                          {getIcon(node.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-100 truncate group-hover:text-blue-300 transition-colors" title={node.label}>
+                          {node.label}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-mono truncate mt-0.5">
+                          {node.id}
+                        </p>
+                        {node.details && node.details[tagKey] && (
+                            <div className="flex items-center mt-2">
+                                <span className="text-[9px] font-black bg-blue-900/20 text-blue-400 px-2 py-0.5 rounded border border-blue-900/30 truncate max-w-full uppercase">
+                                  {tagKey}: {node.details[tagKey]}
+                                </span>
+                            </div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-            
-            <ul className="space-y-2">
-              {typeNodes.map(node => (
-                <li key={node.id} className="bg-slate-900/50 rounded border border-slate-700/50 p-3 hover:border-blue-500/50 transition-colors">
-                  <div className="flex items-start">
-                    <div className="mt-0.5 mr-2 p-1.5 bg-slate-800 rounded border border-slate-700">
-                        {getIcon(node.type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-200 truncate" title={node.label}>
-                        {node.label}
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-mono truncate mb-1">
-                        ID: {node.id}
-                      </p>
-                      {node.details && node.details[tagKey] && (
-                          <div className="flex items-center mt-1">
-                              <span className="text-[10px] bg-blue-900/30 text-blue-300 px-1.5 py-0.5 rounded border border-blue-900/50 truncate max-w-full">
-                                {tagKey}: {node.details[tagKey]}
-                              </span>
-                          </div>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+          );
+        })}
       </div>
       
-      <div className="p-4 border-t border-slate-700 bg-slate-900 text-center">
-        <p className="text-xs text-slate-500">
-            Total Resources: <span className="text-white font-bold">{nodes.length}</span>
-        </p>
+      <div className="p-5 border-t border-slate-700/50 bg-slate-800/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between bg-slate-900/50 p-3 rounded-xl border border-slate-700/30">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Recursos</span>
+            <span className="text-sm font-black text-blue-400">{nodes.length}</span>
+        </div>
       </div>
     </div>
   );

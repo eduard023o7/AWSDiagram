@@ -1,168 +1,198 @@
 import { CloudNode, CloudEdge, ServiceTypes } from '../types';
 
+/**
+ * Normaliza y simplifica identificadores para comparación difusa.
+ */
+const simplifyIdentifier = (str: string): string => {
+  if (!str) return '';
+  // Limpiar ARNs comunes y rutas
+  let clean = str.replace(/arn:aws:apigateway:[^:]+:lambda:path\/[^\/]+\/functions\//, '');
+  clean = clean.replace(/arn:aws:[^:]+:[^:]+:[^:]+:/, ''); // Quitar prefijo arn básico
+  
+  // Quedarse con el último segmento significativo
+  clean = clean.split(':').pop() || clean;
+  clean = clean.split('/').pop() || clean;
+  
+  // Limpiar sufijos de versiones o invocaciones
+  clean = clean.replace(/\/invocations$/, '').replace(/\$[^/]+$/, '');
+  return clean.toLowerCase().trim();
+};
+
 export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
   const edges: CloudEdge[] = [];
-  
-  // Group nodes for faster lookup
-  const nodeMap = new Map<string, CloudNode>();
-  nodes.forEach(n => nodeMap.set(n.id, n));
-  
-  // Helper to safely check type
-  const isType = (n: CloudNode, type: string) => n.type.toUpperCase() === type;
-  const isTypeIncludes = (n: CloudNode, partial: string) => n.type.toUpperCase().includes(partial);
 
-  const lambdas = nodes.filter(n => isType(n, ServiceTypes.LAMBDA));
-  const otherNodes = nodes.filter(n => !isType(n, ServiceTypes.LAMBDA));
-
-  // Helper to add edge
   const addEdge = (sourceId: string, targetId: string, label: string = '') => {
-    if (sourceId === targetId) return;
-    if (!nodeMap.has(sourceId) || !nodeMap.has(targetId)) return;
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    
+    // Verificar existencia
+    const sourceExists = nodes.some(n => n.id === sourceId);
+    const targetExists = nodes.some(n => n.id === targetId);
+    
+    if (!sourceExists || !targetExists) return;
 
     const edgeId = `e-${sourceId}-${targetId}`;
     if (!edges.find(e => e.id === edgeId)) {
-      edges.push({
-        id: edgeId,
-        source: sourceId,
-        target: targetId,
+      edges.push({ 
+        id: edgeId, 
+        source: sourceId, 
+        target: targetId, 
         label: label,
-        style: label ? { stroke: '#3b82f6', strokeWidth: 2 } : undefined
+        style: { stroke: '#4F46E5', strokeWidth: 2 } 
       });
     }
   };
 
-  // --- A. DEEP INSPECTION LOGIC (Real Config) ---
+  // Crear mapa de acceso rápido con IDs simplificados
+  const nodesWithSimpleIds = nodes.map(n => ({
+    ...n,
+    simpleId: simplifyIdentifier(n.id),
+    simpleLabel: simplifyIdentifier(n.label),
+    simpleArn: n.details?.arn ? simplifyIdentifier(n.details.arn) : '',
+    rawArn: n.details?.arn || ''
+  }));
 
-  // 1. Step Functions & SNS (Linked Resources via Deep Inspection)
-  const nodesWithLinks = nodes.filter(n => n.details?.linkedResources);
-  nodesWithLinks.forEach(node => {
-      try {
-          const links = JSON.parse(node.details?.linkedResources || '[]');
-          links.forEach((linkStr: string) => {
-              
-              // 1. Strict ARN or Full Match
-              let targetNode = nodes.find(n => 
-                  n.details?.arn === linkStr || 
-                  linkStr === n.details?.arn
-              );
-
-              // 2. Fuzzy / Partial Match (e.g. ASL contains "MyFunction", Node is "prod-MyFunction-v1")
-              if (!targetNode && !linkStr.startsWith('arn:')) {
-                  // Try to find if the linkStr is contained within the Label or ID
-                  targetNode = nodes.find(n => 
-                      n.id.includes(linkStr) || 
-                      n.label.includes(linkStr) ||
-                      linkStr.includes(n.id) // Inverse check
-                  );
-              }
-
-              // 3. Extracted Name from ARN Match
-              // If linkStr is an ARN, extract the ID and try to match
-              if (!targetNode && linkStr.startsWith('arn:')) {
-                  const parts = linkStr.split(':');
-                  const name = parts[parts.length - 1]; // "function-name"
-                  targetNode = nodes.find(n => n.id === name || n.label === name || n.details?.arn === linkStr);
-              }
-
-              if (targetNode) {
-                  let label = 'Invokes';
-                  if (node.type === 'SNS') label = 'Subscribes';
-                  addEdge(node.id, targetNode.id, label);
-              }
-          });
-      } catch (e) {
-          // ignore parsing error
-      }
-  });
-
-
-  // 2. Lambda Triggers (Event Source Mappings)
-  lambdas.forEach(lambda => {
-      if (lambda.details?.triggers) {
-          const triggers = lambda.details.triggers.split(',');
-          triggers.forEach(triggerArn => {
-              const triggerIdParts = triggerArn.split(':');
-              const triggerId = triggerIdParts[triggerIdParts.length - 1].split('/').pop() || '';
-              
-              const sourceNode = nodes.find(n => n.details?.arn === triggerArn || n.id === triggerId || triggerArn.includes(n.id));
-              
-              if (sourceNode) {
-                  addEdge(sourceNode.id, lambda.id, 'Trigger');
-              }
-          });
-      }
-
-      // 3. Lambda Environment Variables (Heuristic scan)
-      if (lambda.details?.envVars) {
-          try {
-              const envs = JSON.parse(lambda.details.envVars) as Record<string, string>;
-              Object.entries(envs).forEach(([key, value]) => {
-                  const valStr = String(value);
-                  otherNodes.forEach(target => {
-                      const isMatch = valStr.includes(target.id) || 
-                                      (target.label.length > 3 && valStr.includes(target.label)) ||
-                                      (target.details?.arn && valStr.includes(target.details.arn));
-                      
-                      if (isMatch) {
-                          addEdge(lambda.id, target.id, key); 
-                      }
-                  });
-              });
-          } catch (e) { }
-      }
-  });
-
-  // --- B. GENERIC FALLBACK LOGIC ---
-  
-  const loadBalancers = nodes.filter(n => isType(n, 'ELB') || isType(n, 'ELASTICLOADBALANCING'));
-  const ec2Instances = nodes.filter(n => isType(n, ServiceTypes.EC2));
-  const apiGateways = nodes.filter(n => isTypeIncludes(n, 'API') || isTypeIncludes(n, 'GATEWAY'));
-  const databases = nodes.filter(n => isType(n, ServiceTypes.RDS) || isType(n, ServiceTypes.DYNAMODB));
-  const s3Buckets = nodes.filter(n => isType(n, ServiceTypes.S3));
-  
-  // New Categories
-  const cloudFronts = nodes.filter(n => isType(n, 'CLOUDFRONT'));
-  const cognitoPools = nodes.filter(n => isTypeIncludes(n, 'COGNITO'));
-
-  // CloudFront -> S3 or ELB or API Gateway
-  cloudFronts.forEach(cf => {
-      if (s3Buckets.length > 0) addEdge(cf.id, s3Buckets[0].id, 'Origin?'); 
-      if (loadBalancers.length > 0) addEdge(cf.id, loadBalancers[0].id, 'Origin?');
-      if (apiGateways.length > 0) addEdge(cf.id, apiGateways[0].id, 'Origin?');
-  });
-
-  // Cognito -> API Gateway (Authorizer) or ELB
-  cognitoPools.forEach(cog => {
-      apiGateways.forEach(api => addEdge(cog.id, api.id, 'Auth'));
-      loadBalancers.forEach(lb => addEdge(cog.id, lb.id, 'Auth'));
-  });
-
-  // LB -> EC2 (If no target groups found logic added later, keep fallback)
-  loadBalancers.forEach(lb => {
-    ec2Instances.forEach(ec2 => {
-       if(!edges.some(e => (e.source === lb.id && e.target === ec2.id))) {
-           addEdge(lb.id, ec2.id); 
-       }
-    });
-  });
-
-  // API Gateway -> Lambda (Fallback if no integration found)
-  apiGateways.forEach(api => {
-    lambdas.forEach(lambda => {
-        if(!edges.some(e => (e.source === api.id && e.target === lambda.id))) {
-             addEdge(api.id, lambda.id);
-        }
-    });
-  });
-
-  // Compute -> Data (Fallback)
-  const computeNodes = [...ec2Instances, ...lambdas];
-  computeNodes.forEach(compute => {
-      const hasRealConnections = edges.some(e => e.source === compute.id || e.target === compute.id);
+  // 1. CONEXIONES ELB -> TARGET GROUPS -> INSTANCES
+  const elbs = nodes.filter(n => n.type === 'ELB' || n.type === 'ALB' || n.type === 'NLB' || n.type === 'ELASTICLOADBALANCING');
+  elbs.forEach(elb => {
+      // Intentar conectar ELB -> TG
+      let tgNodesFound: string[] = [];
       
-      if (!hasRealConnections) {
-          databases.forEach(db => addEdge(compute.id, db.id));
+      if (elb.details?.elbTargetGroups) {
+          try {
+              const tgArns: string[] = JSON.parse(elb.details.elbTargetGroups);
+              tgArns.forEach(tgArn => {
+                  const tgSimple = simplifyIdentifier(tgArn);
+                  const targetGroupNode = nodesWithSimpleIds.find(n => 
+                      (n.rawArn && n.rawArn === tgArn) || 
+                      n.simpleId === tgSimple ||
+                      (n.type === 'TARGETGROUP' && tgArn.includes(n.id))
+                  );
+                  if (targetGroupNode) {
+                      addEdge(elb.id, targetGroupNode.id, 'Route');
+                      tgNodesFound.push(targetGroupNode.id);
+                  }
+              });
+          } catch (e) {}
       }
+
+      // Conectar Targets finales (Instances/Lambdas)
+      if (elb.details?.elbTargets) {
+          try {
+              const targetIds: string[] = JSON.parse(elb.details.elbTargets);
+              targetIds.forEach(targetId => {
+                  const targetNode = nodesWithSimpleIds.find(n => n.id === targetId || n.simpleId === simplifyIdentifier(targetId));
+                  if (targetNode) {
+                      // Si encontramos nodos de TG asociados a este ELB, intentamos conectar TG -> Instance
+                      // Pero como no sabemos cual target va a cual TG exactamente con la info actual (limitacion API simplificada),
+                      // conectamos TODOS los TGs encontrados a TODOS los targets encontrados para mantener el flujo visual ALB -> TG -> EC2
+                      if (tgNodesFound.length > 0) {
+                          tgNodesFound.forEach(tgId => {
+                              addEdge(tgId, targetNode.id, 'Target');
+                          });
+                      } else {
+                          // Fallback: Si no hay nodos TG visibles, conectar directo ELB -> Instance
+                          addEdge(elb.id, targetNode.id, 'Target');
+                      }
+                  }
+              });
+          } catch (e) {}
+      }
+  });
+
+  // 2. CONEXIONES STEP FUNCTIONS (STATES)
+  const stateMachines = nodes.filter(n => n.type === 'STATES' || n.type === 'STEPFUNCTIONS');
+  stateMachines.forEach(sm => {
+      if (sm.details?.stateMachineResources) {
+          try {
+              const resourceArns: string[] = JSON.parse(sm.details.stateMachineResources);
+              resourceArns.forEach(resArn => {
+                  const resSimple = simplifyIdentifier(resArn);
+                  const targetNode = nodesWithSimpleIds.find(n => 
+                    (n.rawArn && n.rawArn === resArn) ||
+                    n.simpleId === resSimple ||
+                    resArn.includes(n.id)
+                  );
+                  
+                  if (targetNode) {
+                      addEdge(sm.id, targetNode.id, 'Task');
+                  }
+              });
+          } catch (e) {
+              console.error("Error topology state machine", e);
+          }
+      }
+  });
+
+  // 3. CONEXIONES EXPLÍCITAS (Linked Resources - API Gateway, etc)
+  nodes.forEach(node => {
+    if (node.details?.linkedResources) {
+      try {
+        const links: string[] = JSON.parse(node.details.linkedResources);
+        links.forEach(link => {
+          const simpleLink = simplifyIdentifier(link);
+          
+          const target = nodesWithSimpleIds.find(n => 
+            link.includes(n.id) || 
+            (n.rawArn && link.includes(n.rawArn)) ||
+            (n.rawArn && n.rawArn.includes(link)) ||
+            n.simpleId === simpleLink ||
+            n.simpleLabel === simpleLink
+          );
+
+          if (target) {
+            addEdge(node.id, target.id, 'Integración');
+          }
+        });
+      } catch (e) {
+        console.error("Error topology linkedResources", e);
+      }
+    }
+  });
+
+  // 4. CONEXIONES POR VARIABLES DE ENTORNO (Lambdas)
+  const lambdas = nodes.filter(n => n.type === ServiceTypes.LAMBDA);
+  lambdas.forEach(lambda => {
+    if (lambda.details?.envVars) {
+      try {
+        const envs = JSON.parse(lambda.details.envVars);
+        Object.values(envs).forEach((val: any) => {
+          const valStr = String(val);
+          if (valStr.length < 5) return;
+
+          const simpleVal = simplifyIdentifier(valStr);
+
+          const targets = nodesWithSimpleIds.filter(n => 
+            n.id !== lambda.id && (
+              valStr.includes(n.id) || 
+              (n.rawArn && valStr.includes(n.rawArn)) ||
+              (n.simpleLabel && valStr.toLowerCase().includes(n.simpleLabel) && n.simpleLabel.length > 5) ||
+              n.simpleId === simpleVal
+            )
+          );
+
+          targets.forEach(t => addEdge(lambda.id, t.id, 'Ref. Env'));
+        });
+      } catch (e) {}
+    }
+  });
+
+  // 5. CONEXIONES POR PREFIJO (Heurística Fallback)
+  nodes.forEach(nodeA => {
+    const partsA = nodeA.label.split(/[-_]/);
+    if (partsA.length < 2) return;
+    const prefixA = partsA.slice(0, 2).join('-'); 
+
+    nodes.forEach(nodeB => {
+      if (nodeA.id === nodeB.id) return;
+      
+      if (nodeB.label.startsWith(prefixA)) {
+        const typeA = nodeA.type;
+        const typeB = nodeB.type;
+
+        if ((typeA.includes('API')) && typeB === ServiceTypes.LAMBDA) addEdge(nodeA.id, nodeB.id);
+        if (typeA === ServiceTypes.LAMBDA && (typeB === ServiceTypes.RDS || typeB === ServiceTypes.DYNAMODB || typeB === ServiceTypes.S3)) addEdge(nodeA.id, nodeB.id);
+      }
+    });
   });
 
   return edges;
