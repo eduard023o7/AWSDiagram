@@ -56,7 +56,50 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
     rawArn: n.details?.arn || ''
   }));
 
-  // 1. CONEXIONES ELB -> TARGET GROUPS -> INSTANCES
+  // 1. CONEXIONES API GATEWAY -> LAMBDA (Usando lambdaTargets extraídos)
+  const apiGateways = nodes.filter(n => n.type === 'APIGATEWAY' || n.type === 'EXECUTE-API');
+  apiGateways.forEach(api => {
+     if (api.details?.lambdaTargets) {
+        try {
+            const targets: string[] = JSON.parse(api.details.lambdaTargets);
+            targets.forEach(funcName => {
+                const simpleTarget = simplifyIdentifier(funcName);
+                
+                // Buscar la Lambda que coincida con el nombre
+                const targetNode = nodesWithSimpleIds.find(n => 
+                    n.type === 'LAMBDA' && (
+                        n.id === funcName || 
+                        n.label === funcName ||
+                        n.simpleId === simpleTarget ||
+                        n.simpleLabel === simpleTarget
+                    )
+                );
+
+                if (targetNode) {
+                    addEdge(api.id, targetNode.id, 'Invoke');
+                }
+            });
+        } catch(e) {}
+     }
+  });
+
+  // 2. CONEXIONES WAF -> RECURSOS (ALB, APIGW)
+  const wafNodes = nodes.filter(n => n.type === 'WAF' || n.type === 'WAFV2');
+  wafNodes.forEach(waf => {
+      if (waf.details?.protectedResources) {
+          try {
+              const protectedArns: string[] = JSON.parse(waf.details.protectedResources);
+              protectedArns.forEach(resArn => {
+                  const targetNode = nodesWithSimpleIds.find(n => n.rawArn === resArn || resArn.includes(n.id));
+                  if (targetNode) {
+                      addEdge(waf.id, targetNode.id, 'Protects');
+                  }
+              });
+          } catch (e) {}
+      }
+  });
+
+  // 3. CONEXIONES ELB -> TARGET GROUPS -> INSTANCES
   const elbs = nodes.filter(n => n.type === 'ELB' || n.type === 'ALB' || n.type === 'NLB' || n.type === 'ELASTICLOADBALANCING');
   elbs.forEach(elb => {
       let tgNodesFound: string[] = [];
@@ -98,7 +141,7 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
       }
   });
 
-  // 2. CONEXIONES STEP FUNCTIONS (STATES)
+  // 4. CONEXIONES STEP FUNCTIONS (STATES)
   const stateMachines = nodes.filter(n => n.type === 'STATES' || n.type === 'STEPFUNCTIONS');
   stateMachines.forEach(sm => {
       if (sm.details?.stateMachineResources) {
@@ -126,7 +169,7 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
       }
   });
 
-  // 3. CONEXIONES CLOUDFRONT (ORIGINS)
+  // 5. CONEXIONES CLOUDFRONT (ORIGINS)
   const distributions = nodes.filter(n => n.type === 'CLOUDFRONT');
   distributions.forEach(dist => {
       if (dist.details?.cloudfrontOrigins) {
@@ -159,55 +202,7 @@ export const buildTopology = (nodes: CloudNode[]): CloudEdge[] => {
       }
   });
 
-  // 4. CONEXIONES EXPLÍCITAS (Linked Resources)
-  nodes.forEach(node => {
-    if (node.details?.linkedResources) {
-      try {
-        const links: string[] = JSON.parse(node.details.linkedResources);
-        links.forEach(link => {
-          const simpleLink = simplifyIdentifier(link);
-          
-          // --- LOGICA ESPECIFICA PARA API GATEWAY -> LAMBDA ---
-          // Intentamos encontrar la Lambda incluso si el nombre no es exacto
-          if (link.includes(':function:')) {
-             const parts = link.split(':function:');
-             if (parts.length > 1) {
-                 const funcName = parts[1].split(':')[0]; // "NombreFuncion"
-                 const simpleFuncName = simplifyIdentifier(funcName);
-
-                 const lambdaMatch = nodesWithSimpleIds.find(n => 
-                    n.id === funcName || 
-                    n.simpleId === simpleFuncName ||
-                    n.simpleLabel === simpleFuncName
-                 );
-                 if (lambdaMatch) {
-                     addEdge(node.id, lambdaMatch.id, 'Integración');
-                     return; 
-                 }
-             }
-          }
-          
-          const target = nodesWithSimpleIds.find(n => 
-            // 1. Coincidencia Exacta de ARN
-            (n.rawArn && link === n.rawArn) ||
-            // 2. El link (ARN) contiene el ID del nodo
-            link.includes(n.id) || 
-            // 3. El link contiene el ARN del nodo
-            (n.rawArn && link.includes(n.rawArn)) ||
-            // 4. El ARN del nodo contiene el link
-            (n.rawArn && n.rawArn.includes(link)) ||
-            // 5. Comparación simplificada (lowercase, trim)
-            n.simpleId === simpleLink ||
-            n.simpleLabel === simpleLink
-          );
-          
-          if (target) addEdge(node.id, target.id, 'Integración');
-        });
-      } catch (e) {}
-    }
-  });
-
-  // 5. CONEXIONES POR VARIABLES DE ENTORNO (Lambdas)
+  // 6. CONEXIONES POR VARIABLES DE ENTORNO (Lambdas)
   const lambdas = nodes.filter(n => n.type === ServiceTypes.LAMBDA);
   lambdas.forEach(lambda => {
     if (lambda.details?.envVars) {

@@ -7,15 +7,17 @@ const NODE_HEIGHT = 120;
 // Definición de constantes de Capas para uso compartido
 export const TIER_HEIGHT = 300; // Altura de cada banda
 export const TIERS = {
-  EDGE: 0,
-  DELIVERY: 1,
-  COMPUTE: 2,
-  INTEGRATION: 3,
-  DATA: 4,
-  GOVERNANCE: 5
+  SECURITY: 0,
+  EDGE: 1,
+  DELIVERY: 2,
+  COMPUTE: 3,
+  INTEGRATION: 4,
+  DATA: 5,
+  GOVERNANCE: 6
 };
 
 export const TIER_LABELS: Record<number, string> = {
+  [TIERS.SECURITY]: "Security Perimeter (WAF / Shield)",
   [TIERS.EDGE]: "Edge & Network Public",
   [TIERS.DELIVERY]: "Entry Point / Load Balancing",
   [TIERS.COMPUTE]: "Compute / Backend / Microservices",
@@ -27,23 +29,26 @@ export const TIER_LABELS: Record<number, string> = {
 // Definición de Capas (Tiers)
 const getServiceTier = (type: string): number => {
   const t = type.toUpperCase();
+
+  // Tier 0: Security (New Layer)
+  if (t === 'WAF' || t === 'WAFV2' || t === 'SHIELD' || t === 'NETWORK-FIREWALL' || t === 'GUARDDUTY' || t === 'INSPECTOR' || t === 'MACIE') return TIERS.SECURITY;
   
-  // Tier 0: Edge / Public / Entry
-  if (t === 'CLOUDFRONT' || t === 'ROUTE53' || t === 'WAF' || t === 'WAFV2' || t === 'INTERNETGATEWAY' || t === 'TRANSITGATEWAY') return TIERS.EDGE;
+  // Tier 1: Edge / Public
+  if (t === 'CLOUDFRONT' || t === 'ROUTE53' || t === 'INTERNETGATEWAY' || t === 'TRANSITGATEWAY' || t === 'GLOBALACCELERATOR') return TIERS.EDGE;
   
-  // Tier 1: Networking Entry / Load Balancing / API
+  // Tier 2: Networking Entry / Load Balancing / API
   if (t.includes('API') || t === 'ELB' || t === 'ALB' || t === 'NLB' || t === 'ELASTICLOADBALANCING' || t === 'TARGETGROUP') return TIERS.DELIVERY;
   
-  // Tier 2: Compute / Backend
+  // Tier 3: Compute / Backend
   if (t === 'LAMBDA' || t === 'EC2' || t === 'ECS' || t === 'EKS' || t === 'FARGATE' || t === 'STATES' || t === 'STEPFUNCTIONS' || t === 'BATCH') return TIERS.COMPUTE;
 
-  // Tier 3: Integration / Async
+  // Tier 4: Integration / Async
   if (t === 'SQS' || t === 'SNS' || t === 'EVENTBRIDGE' || t === 'EVENTS' || t === 'KINESIS' || t === 'MQ') return TIERS.INTEGRATION;
 
-  // Tier 4: Data / Storage
+  // Tier 5: Data / Storage
   if (t === 'RDS' || t === 'DYNAMODB' || t === 'S3' || t === 'ELASTICACHE' || t === 'DOCDB' || t === 'REDSHIFT' || t === 'AURORA' || t === 'EFS') return TIERS.DATA;
 
-  // Tier 5: Governance / Security / Management
+  // Tier 6: Governance / Management
   if (t === 'CLOUDWATCH' || t === 'LOGS' || t === 'IAM' || t === 'KMS' || t === 'SECRETSMANAGER' || t === 'CLOUDFORMATION' || t === 'CONFIG' || t === 'COGNITO' || t === 'COGNITO-IDP') return TIERS.GOVERNANCE;
 
   return TIERS.COMPUTE; // Default

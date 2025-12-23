@@ -201,6 +201,11 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
   const buttonBase = isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white' : 'bg-white border-gray-200 text-slate-500 hover:text-slate-900 hover:bg-gray-50';
   const buttonActive = isDark ? 'bg-[#4F46E5]/10 border-[#4F46E5]/30 text-[#4F46E5]' : 'bg-[#4F46E5]/10 border-[#4F46E5]/30 text-[#4F46E5]';
 
+  // Controls Style: Grayscale High Contrast
+  const controlsStyle = isDark 
+     ? '!bg-[#222] !border-white/20 !fill-white [&>button]:!fill-white [&>button]:!border-white/20 [&>button:hover]:!bg-white/20' 
+     : '!bg-white !border-gray-400 !fill-black [&>button]:!fill-black [&>button]:!border-gray-300 [&>button:hover]:!bg-gray-100';
+
   return (
     <div className={`h-screen w-full flex flex-col overflow-hidden transition-colors duration-300 ${bgColor}`}>
       {/* Barra de herramientas superior */}
@@ -319,11 +324,11 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
         <div className="flex-1 h-full relative bg-transparent">
           {error && <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500/90 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl flex items-center animate-in slide-in-from-top-4"><AlertCircle className="w-4 h-4 mr-2" />{error}</div>}
 
-          {/* Top-Left Legend */}
-          <div className="absolute top-6 left-6 z-40 pointer-events-none">
+          {/* Top-Right Legend */}
+          <div className="absolute top-6 right-6 z-40 pointer-events-none">
              <div className="pointer-events-auto">
                  {isLegendOpen ? (
-                      <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-md w-64 transition-all animate-in fade-in slide-in-from-left-4 ${isDark ? 'bg-[#0A0A0B]/90 border-white/10' : 'bg-white/90 border-gray-200'}`}>
+                      <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-md w-64 transition-all animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-[#0A0A0B]/90 border-white/10' : 'bg-white/90 border-gray-200'}`}>
                           <div className="flex justify-between items-center mb-3">
                               <h4 className={`text-xs font-black uppercase tracking-widest ${textColor}`}>Leyenda</h4>
                               <button onClick={() => setIsLegendOpen(false)} className={`p-1 rounded hover:bg-gray-500/10 ${subTextColor}`}><X className="w-3 h-3"/></button>
@@ -365,7 +370,7 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
             deleteKeyCode={["Backspace", "Delete"]} // Enable delete
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} color={isDark ? '#333' : '#cbd5e1'} />
-            <Controls className={`!rounded-xl !border overflow-hidden !shadow-xl ${isDark ? '!bg-[#1a1a1a] !border-white/10 !fill-white [&>button]:!fill-white [&>button]:!border-white/10 [&>button:hover]:!bg-white/10' : '!bg-white !border-gray-200'}`} />
+            <Controls className={`!rounded-xl !border overflow-hidden !shadow-xl ${controlsStyle}`} />
             {isMiniMapOpen && (
                 <MiniMap 
                     nodeColor={(n) => { if (n.type === 'layer') return 'transparent'; return isDark ? '#4F46E5' : '#8B5CF6'; }}

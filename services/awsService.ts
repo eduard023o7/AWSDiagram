@@ -146,8 +146,9 @@ const enrichNodesWithDeepInspection = async (
     const apiPromise = Promise.all(apiNodes.map(async (node) => {
         try {
             const apiId = node.id;
+            const lambdaTargets: string[] = []; // Specific lambda names found
             
-            // Attempt 1: REST APIs (V1) - Inspect Resources -> Methods -> Integration
+            // Attempt 1: REST APIs (V1)
             let response = await fetchAws({
                 accessKey, secretKey, region, service: 'apigateway', host: `apigateway.${region}.amazonaws.com`,
                 path: `/restapis/${apiId}/resources`, method: 'GET', body: '', 
@@ -158,41 +159,26 @@ const enrichNodesWithDeepInspection = async (
             if (response.ok) {
                 const data = await response.json();
                 const items = data._embedded?.item || data.items || []; 
-                const links: string[] = [];
 
                 const extractFromItem = (item: any) => {
                     if (item.resourceMethods) {
                         Object.values(item.resourceMethods).forEach((method: any) => {
                             if (method.methodIntegration) {
-                                const integration = method.methodIntegration;
-                                const uri = integration.uri || '';
+                                const uri = method.methodIntegration.uri || '';
 
-                                // 1. Integraciones Lambda (AWS_PROXY o AWS)
-                                // La URI de integración de API Gateway envuelve el ARN real de la Lambda.
-                                // Ejemplo: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123:function:MyFunc/invocations
-                                if (uri.includes('functions/')) {
-                                    // Extraemos TODO lo que hay después de 'functions/' hasta '/invocations' o fin de string
-                                    const rawTarget = uri.split('functions/')[1];
-                                    if (rawTarget) {
-                                        // A veces viene rawTarget = "arn:aws:lambda:...:MyFunc/invocations"
-                                        // Limpiamos invocations
-                                        const cleanArn = rawTarget.split('/invocations')[0];
-                                        if (cleanArn) links.push(cleanArn);
+                                // Lógica mejorada de extracción de Lambda
+                                // URI format: arn:aws:apigateway:{region}:lambda:path/2015-03-31/functions/{LambdaARN}/invocations
+                                if (uri.includes(':function:')) {
+                                    const parts = uri.split(':function:');
+                                    if (parts.length > 1) {
+                                        // "NombreFuncion/invocations" o "NombreFuncion:Alias/invocations"
+                                        const tail = parts[1]; 
+                                        let funcName = tail.split('/invocations')[0];
+                                        // Remover alias si existen
+                                        funcName = funcName.split(':')[0];
+                                        if (funcName) lambdaTargets.push(funcName);
                                     }
                                 } 
-                                // 2. Step Functions
-                                else if (uri.includes(':states:') && uri.includes(':stateMachine:')) {
-                                     const smMatch = uri.match(/arn:aws:states:[a-z0-9-]+:[0-9]+:stateMachine:[a-zA-Z0-9-_\.]+/);
-                                     if (smMatch) links.push(smMatch[0]);
-                                }
-                                // 3. Integraciones HTTP / Proxy (URLs externas o ALBs)
-                                else if ((integration.type === 'HTTP' || integration.type === 'HTTP_PROXY') && uri) {
-                                    links.push(uri);
-                                }
-                                // 4. Fallback: Si es un ARN directo
-                                else if (uri.startsWith('arn:aws:')) {
-                                    links.push(uri);
-                                }
                             }
                         });
                     }
@@ -200,8 +186,8 @@ const enrichNodesWithDeepInspection = async (
 
                 if (Array.isArray(items)) items.forEach(extractFromItem);
                 
-                if (links.length > 0) {
-                    node.details = { ...node.details, linkedResources: JSON.stringify([...new Set(links)]) };
+                if (lambdaTargets.length > 0) {
+                    node.details = { ...node.details, lambdaTargets: JSON.stringify([...new Set(lambdaTargets)]) };
                 }
             } else {
                  // Attempt 2: API Gateway V2 (HTTP APIs)
@@ -211,12 +197,22 @@ const enrichNodesWithDeepInspection = async (
                 });
 
                 if (response.ok) {
-                    // V2 Success (HTTP API)
                     const data = await response.json();
                     const items = data.Items || [];
-                    const links = items.map((item: any) => item.IntegrationUri).filter(Boolean);
-                    if (links.length > 0) {
-                        node.details = { ...node.details, linkedResources: JSON.stringify(links) };
+                    const foundTargets: string[] = [];
+                    items.forEach((item: any) => {
+                        const uri = item.IntegrationUri || '';
+                        if (uri.includes(':function:')) {
+                             const parts = uri.split(':function:');
+                             if (parts.length > 1) {
+                                 let funcName = parts[1].split('/invocations')[0];
+                                 funcName = funcName.split(':')[0];
+                                 if (funcName) foundTargets.push(funcName);
+                             }
+                        }
+                    });
+                    if (foundTargets.length > 0) {
+                        node.details = { ...node.details, lambdaTargets: JSON.stringify([...new Set(foundTargets)]) };
                     }
                 }
             }
@@ -225,7 +221,55 @@ const enrichNodesWithDeepInspection = async (
         }
     }));
 
-    // 2. Lambda Inspection
+    // 2. WAF Inspection
+    const wafNodes = enrichedNodes.filter(n => n.type === 'WAF' || n.type === 'WAFV2');
+    const wafPromise = Promise.all(wafNodes.map(async (node) => {
+        try {
+            const arn = node.details?.arn || '';
+            if (!arn) return;
+            
+            // ListResourcesForWebACL requires the Web ACL ARN and Scope (REGIONAL or CLOUDFRONT)
+            // Assuming REGIONAL for most tag-based resources scan, unless global.
+            const payload = { 
+                WebACLArn: arn,
+                ResourceType: 'APPLICATION_LOAD_BALANCER' // Can also be API_GATEWAY, APPSYNC
+            };
+
+            const response = await fetchAws({
+                accessKey, secretKey, region, service: 'wafv2', host: `wafv2.${region}.amazonaws.com`,
+                path: '/', method: 'POST', body: JSON.stringify(payload),
+                headers: { "X-Amz-Target": "AWSWAF_20190729.ListResourcesForWebACL" }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const resourceArns = data.ResourceArns || [];
+                if (resourceArns.length > 0) {
+                     node.details = { ...node.details, protectedResources: JSON.stringify(resourceArns) };
+                }
+            }
+            
+            // Try checking for API Gateway as well
+            const payloadApi = { WebACLArn: arn, ResourceType: 'API_GATEWAY' };
+            const responseApi = await fetchAws({
+                accessKey, secretKey, region, service: 'wafv2', host: `wafv2.${region}.amazonaws.com`,
+                path: '/', method: 'POST', body: JSON.stringify(payloadApi),
+                headers: { "X-Amz-Target": "AWSWAF_20190729.ListResourcesForWebACL" }
+            });
+             if (responseApi.ok) {
+                const data = await responseApi.json();
+                const resourceArns = data.ResourceArns || [];
+                if (resourceArns.length > 0) {
+                     const existing = node.details?.protectedResources ? JSON.parse(node.details.protectedResources) : [];
+                     node.details = { ...node.details, protectedResources: JSON.stringify([...existing, ...resourceArns]) };
+                }
+            }
+        } catch (e) {
+            console.warn(`Failed to inspect WAF ${node.id}`, e);
+        }
+    }));
+
+    // 3. Lambda Inspection (Env Vars)
     const lambdaNodes = enrichedNodes.filter(n => n.type === ServiceTypes.LAMBDA);
     const lambdaPromise = Promise.all(lambdaNodes.map(async (node) => {
       try {
@@ -243,7 +287,7 @@ const enrichNodesWithDeepInspection = async (
       } catch (e) {}
     }));
 
-    // 3. ELB Inspection
+    // 4. ELB Inspection (Targets)
     const elbNodes = enrichedNodes.filter(n => n.type === 'ELB' || n.type === 'ALB' || n.type === 'NLB');
     const elbPromise = Promise.all(elbNodes.map(async (node) => {
         try {
@@ -285,88 +329,7 @@ const enrichNodesWithDeepInspection = async (
         }
     }));
 
-    // 4. Step Functions (States) Inspection
-    const stateNodes = enrichedNodes.filter(n => n.type === 'STATES' || n.type === 'STEPFUNCTIONS');
-    const statePromise = Promise.all(stateNodes.map(async (node) => {
-        try {
-            const stateMachineArn = node.details?.arn || '';
-            const payload = { stateMachineArn };
-            const response = await fetchAws({
-                accessKey, secretKey, region, service: 'states', host: `states.${region}.amazonaws.com`,
-                path: '/', method: 'POST', body: JSON.stringify(payload), 
-                headers: { "X-Amz-Target": "AWSStepFunctions.DescribeStateMachine" }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const definitionStr = data.definition; // JSON String ASL
-                
-                let foundResources: string[] = [];
-
-                // 1. Regex for Lambda ARNs
-                const lambdaArnsRegex = definitionStr.match(/arn:aws:lambda:[a-z0-9-]+:[0-9]+:function:([a-zA-Z0-9-_]+)/g);
-                if (lambdaArnsRegex) foundResources.push(...lambdaArnsRegex);
-
-                // 2. Parse JSON for Resource and Parameters
-                try {
-                    const traverse = (obj: any) => {
-                        if (!obj || typeof obj !== 'object') return;
-                        
-                        if (obj.Resource && typeof obj.Resource === 'string') {
-                            if (obj.Resource.includes(':function:') || obj.Resource.includes('arn:aws:lambda')) {
-                                foundResources.push(obj.Resource);
-                            }
-                        }
-                        
-                        if (obj.Parameters && obj.Parameters.FunctionName) {
-                            foundResources.push(obj.Parameters.FunctionName);
-                        }
-
-                        Object.values(obj).forEach(child => traverse(child));
-                    };
-                    
-                    const definitionObj = JSON.parse(definitionStr);
-                    traverse(definitionObj);
-
-                } catch (parseError) {
-                    console.warn("Error parsing ASL JSON", parseError);
-                }
-
-                const uniqueResources = [...new Set(foundResources)];
-                if (uniqueResources.length > 0) {
-                    node.details = { ...node.details, stateMachineResources: JSON.stringify(uniqueResources) };
-                }
-            }
-        } catch (e) {
-             console.warn(`Failed to inspect State Machine ${node.id}`, e);
-        }
-    }));
-
-    // 5. CloudFront Origins Inspection
-    const cfNodes = enrichedNodes.filter(n => n.type === 'CLOUDFRONT');
-    const cfPromise = Promise.all(cfNodes.map(async (node) => {
-        try {
-            const distId = node.id;
-            const response = await fetchAws({
-                accessKey, secretKey, region: 'us-east-1', service: 'cloudfront', host: `cloudfront.amazonaws.com`,
-                path: `/2020-05-31/distribution/${distId}/config`, method: 'GET', body: '', headers: {}
-            });
-
-            if (response.ok) {
-                const xmlText = await response.text();
-                // Simple regex extraction for DomainName inside Origins
-                const origins = xmlText.match(/<DomainName>(.*?)<\/DomainName>/g)?.map(t => t.replace(/<\/?DomainName>/g, '')) || [];
-                
-                if (origins.length > 0) {
-                    node.details = { ...node.details, cloudfrontOrigins: JSON.stringify([...new Set(origins)]) };
-                }
-            }
-        } catch (e) {
-            console.warn(`Failed to inspect CloudFront ${node.id}`, e);
-        }
-    }));
-
-    await Promise.all([apiPromise, lambdaPromise, elbPromise, statePromise, cfPromise]);
+    await Promise.all([apiPromise, wafPromise, lambdaPromise, elbPromise]);
     return enrichedNodes;
 };
 
