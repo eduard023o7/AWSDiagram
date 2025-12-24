@@ -14,7 +14,7 @@
     "@google/genai": "0.1.1",
     "lucide-react": "0.454.0",
     "reactflow": "11.11.4",
-    "dagre": "0.8.5"
+    "dagre": "1.1.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

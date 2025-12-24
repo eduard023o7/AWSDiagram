@@ -60,7 +60,9 @@ export const getLayoutedElements = (
   direction = 'TB',
   spacing: 'compact' | 'expanded' = 'expanded'
 ) => {
-  const dagreGraph = new dagre.graphlib.Graph();
+  // Dagre ESM import fix: sometimes it's default, sometimes named
+  const graphlib = dagre.graphlib; 
+  const dagreGraph = new graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
   // Aumentamos el ranksep para dar aire entre capas visuales
