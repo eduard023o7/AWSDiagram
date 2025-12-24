@@ -22,8 +22,8 @@ import LayerNode from './LayerNode';
 import ResourceList from './ResourceList';
 import { ArchitectureData, ConfigFormData } from '../types';
 import { getLayoutedElements, TIER_HEIGHT, TIERS, TIER_LABELS } from '../services/layoutService';
-import { Download, Tag, X, List, Layout, Maximize, Minimize, ChevronDown, Monitor, FileSpreadsheet, RefreshCw, AlertCircle, Moon, Sun, Info, Undo2, Map } from 'lucide-react';
-import { downloadDrawIo, downloadLucidXml, downloadResourceCsv } from '../utils/export';
+import { Download, Tag, X, List, Layout, Maximize, Minimize, ChevronDown, Monitor, FileSpreadsheet, RefreshCw, AlertCircle, Moon, Sun, Undo2, Map } from 'lucide-react';
+import { downloadDrawIo, downloadResourceCsv } from '../utils/export';
 
 interface Props {
   data: ArchitectureData;
@@ -46,7 +46,6 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
   const [isExpanded, setIsExpanded] = useState(true); 
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isTagMenuOpen, setIsTagMenuOpen] = useState(false);
-  const [isLegendOpen, setIsLegendOpen] = useState(true); 
   const [isMiniMapOpen, setIsMiniMapOpen] = useState(true); // Toggle MiniMap
   
   const [newTagKey, setNewTagKey] = useState(config.tagKey);
@@ -171,16 +170,13 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
 
   // --- EXPORT HANDLERS (USING CURRENT STATE) ---
   const handleExportDrawIo = useCallback(() => {
-    downloadDrawIo(nodes.filter(n => n.type === 'custom'), edges);
-    setIsExportMenuOpen(false);
-  }, [nodes, edges]);
-
-  const handleExportLucid = useCallback(() => {
-    downloadLucidXml(nodes.filter(n => n.type === 'custom'), edges);
+    // Pass ALL nodes (including layers) to the export function to render background tiers
+    downloadDrawIo(nodes, edges);
     setIsExportMenuOpen(false);
   }, [nodes, edges]);
 
   const handleExportCsv = useCallback(() => {
+      // CSV only needs resource nodes
       downloadResourceCsv(nodes.filter(n => n.type === 'custom'));
       setIsExportMenuOpen(false);
   }, [nodes]);
@@ -304,7 +300,6 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
                          <div className={`p-3 border-b ${isDark ? 'border-white/5' : 'border-gray-100'}`}><span className={`text-[10px] font-bold uppercase tracking-widest pl-2 ${subTextColor}`}>Formatos</span></div>
                         <div className="p-2 space-y-1">
                             <button onClick={handleExportDrawIo} className={`w-full text-left px-3 py-2.5 text-sm rounded-xl flex items-center font-medium transition-colors ${isDark ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-slate-600 hover:bg-gray-100 hover:text-slate-900'}`}><div className="w-6 h-6 rounded bg-[#F08705]/20 text-[#F08705] flex items-center justify-center mr-3"><Layout className="w-3.5 h-3.5" /></div>Draw.io / Diagrams.net</button>
-                            <button onClick={handleExportLucid} className={`w-full text-left px-3 py-2.5 text-sm rounded-xl flex items-center font-medium transition-colors ${isDark ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-slate-600 hover:bg-gray-100 hover:text-slate-900'}`}><div className="w-6 h-6 rounded bg-[#F83A10]/20 text-[#F83A10] flex items-center justify-center mr-3"><Monitor className="w-3.5 h-3.5" /></div>LucidChart (XML)</button>
                             <button onClick={handleExportCsv} className={`w-full text-left px-3 py-2.5 text-sm rounded-xl flex items-center font-medium transition-colors ${isDark ? 'text-slate-300 hover:bg-white/5 hover:text-white' : 'text-slate-600 hover:bg-gray-100 hover:text-slate-900'}`}><div className="w-6 h-6 rounded bg-[#10B981]/20 text-[#10B981] flex items-center justify-center mr-3"><FileSpreadsheet className="w-3.5 h-3.5" /></div>CSV Inventory</button>
                         </div>
                     </div>
@@ -323,35 +318,6 @@ const ArchitectureViewer: React.FC<Props> = ({ data, config, onReset, onUpdateTa
         {/* Main Canvas Area */}
         <div className="flex-1 h-full relative bg-transparent">
           {error && <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500/90 text-white px-4 py-2 rounded-full text-sm font-bold shadow-xl flex items-center animate-in slide-in-from-top-4"><AlertCircle className="w-4 h-4 mr-2" />{error}</div>}
-
-          {/* Top-Right Legend */}
-          <div className="absolute top-6 right-6 z-40 pointer-events-none">
-             <div className="pointer-events-auto">
-                 {isLegendOpen ? (
-                      <div className={`p-4 rounded-2xl border shadow-2xl backdrop-blur-md w-64 transition-all animate-in fade-in slide-in-from-right-4 ${isDark ? 'bg-[#0A0A0B]/90 border-white/10' : 'bg-white/90 border-gray-200'}`}>
-                          <div className="flex justify-between items-center mb-3">
-                              <h4 className={`text-xs font-black uppercase tracking-widest ${textColor}`}>Leyenda</h4>
-                              <button onClick={() => setIsLegendOpen(false)} className={`p-1 rounded hover:bg-gray-500/10 ${subTextColor}`}><X className="w-3 h-3"/></button>
-                          </div>
-                          <div className="space-y-2">
-                              <div className="flex items-center">
-                                  <div className="w-3 h-3 rounded-full bg-emerald-500 mr-2 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div>
-                                  <span className={`text-[10px] font-medium ${subTextColor}`}>Conexión Detectada</span>
-                              </div>
-                              <div className="flex items-center">
-                                  <div className="w-8 h-0.5 bg-[#4F46E5] mr-2"></div>
-                                  <span className={`text-[10px] font-medium ${subTextColor}`}>Flujo de Datos</span>
-                              </div>
-                              <div className="mt-2 pt-2 border-t border-gray-500/10">
-                                  <p className={`text-[9px] ${subTextColor}`}>Arrastra conectores para crear. Selecciona y presiona <strong>Supr</strong> para borrar recursos o líneas.</p>
-                              </div>
-                          </div>
-                      </div>
-                  ) : (
-                      <button onClick={() => setIsLegendOpen(true)} className={`p-3 rounded-xl border shadow-lg transition-all ${buttonBase}`} title="Mostrar Leyenda"><Info className="w-5 h-5" /></button>
-                  )}
-             </div>
-          </div>
 
           <ReactFlow
             nodes={nodes}

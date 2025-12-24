@@ -93,7 +93,7 @@ export const getLayoutedElements = (
 
     const dagrePos = dagreGraph.node(node.id);
     // Fallback por si dagre no tiene el nodo (ej: nodo aislado raro)
-    if (!dagrePos) return node;
+    if (!dagrePos) return { ...node, width: NODE_WIDTH, height: NODE_HEIGHT };
 
     const tier = getServiceTier(node.data.serviceType);
     
@@ -110,6 +110,9 @@ export const getLayoutedElements = (
         x: dagrePos.x - NODE_WIDTH / 2,
         y: yPos,
       },
+      // Assign explicit width/height for export usage
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT
     };
   });
 
